@@ -1,4 +1,4 @@
-```md
+
 # Transformer
 
 This repository contains a minimal Transformer encoder–decoder implementation in PyTorch, with **correctness verification** (unit tests) and a **basic CPU training loop** (d_model=128) that can run on a laptop/CPU-only machine.
