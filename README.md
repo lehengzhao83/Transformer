@@ -1,159 +1,173 @@
+# Transformer (Toy Seq2Seq) — Strict Pyright + Ruff
 
-# Transformer
-
-This repository contains a minimal Transformer encoder–decoder implementation in PyTorch, with **correctness verification** (unit tests) and a **basic CPU training loop** (d_model=128) that can run on a laptop/CPU-only machine.
-
-The repo is designed as a clean starting point for future work (e.g., building larger models or migrating to a world-model codebase).
+This repository contains a minimal, from-scratch Transformer for toy seq2seq tasks (`copy` / `reverse`), refactored to comply with a **strict** `pyright` configuration and an opinionated `ruff` rule set.
 
 ---
 
-## Project Structure
+## Features
+
+- Encoder–decoder Transformer (teacher forcing)
+- Boolean attention masks (padding, causal, cross) with **True = allowed**
+- Toy dataset for sanity checking behavior (`copy`, `reverse`)
+- Greedy decoding for qualitative inspection
+- CPU-first workflow (assignment-friendly); AMP enabled only on CUDA
+
+---
+
+## Project Layout
 
 ```
 
 .
-├── README.md
-├── requirements.txt
-├── requirements-dev.txt
-├── pyproject.toml
-├── pyrightconfig.json
-├── src/
-│   ├── **init**.py
-│   ├── model.py
-│   ├── masks.py
-│   ├── data.py
-│   ├── train.py
-│   └── eval.py
-└── tests/
-├── conftest.py
-├── test_shapes.py
-├── test_masks.py
-└── test_attention_equivalence.py
+├─ pyproject.toml
+├─ run_toy_train.sh
+├─ src/
+│  └─ transformer/
+│     ├─ **init**.py
+│     ├─ data.py
+│     ├─ eval.py
+│     ├─ masks.py
+│     ├─ model.py
+│     ├─ train.py
+│     └─ py.typed
+└─ tests/
+├─ test_attention_equivalence.py
+├─ test_masks.py
+└─ test_shapes.py
 
 ````
 
+> **Important:** all imports should use `transformer.*` (not `src.*`).
+
 ---
 
-## Environment Setup (Linux)
+## Requirements
 
-All commands below should be run **in the repository root directory** (the folder where `README.md` is located).
+- Python **3.12**
+- PyTorch (CPU or CUDA)
 
-### 1) Create and activate a virtual environment
+---
+
+## Installation (recommended)
+
+Create a virtual environment and install in editable mode:
 
 ```bash
-python3 -m venv .venv
+python -m venv .venv
 source .venv/bin/activate
+
+pip install -U pip
+pip install -e .
 ````
 
-If you see `(.venv)` at the beginning of your terminal prompt, the environment is active.
-
-### 2) Install dependencies
-
-```bash
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-(Optional, recommended) Install development tools (lint + typing + tests):
-
-```bash
-pip install -r requirements-dev.txt
-```
+This ensures `python -m transformer.train ...` works everywhere (including `pytest`).
 
 ---
 
-## Correctness Verification
+## Quick Start: Train Toy Tasks
 
-The correctness verification is based on unit tests that check:
-
-* **Shapes** of embedding, attention, encoder/decoder, and full Transformer outputs
-* **Mask correctness** (padding mask + causal mask)
-* **Numerical equivalence**: our `MultiHeadAttention` matches PyTorch’s official `nn.MultiheadAttention` when dropout=0 and no mask is used
-
-Run all tests:
+### Option A — Use the provided script
 
 ```bash
-pytest -q
+bash run_toy_train.sh
 ```
 
-Expected result: you should see something like `... passed` and **no failures**.
-
----
-
-## Code Quality (Ruff + Pyright)
-
-This repo includes basic Python project management/config via `pyproject.toml` and type checking via `pyrightconfig.json`.
-
-Run linting:
+By default this runs on CPU. To run on CUDA (if available):
 
 ```bash
-ruff check .
+DEVICE=cuda bash run_toy_train.sh
 ```
 
-Run type checking:
-
-```bash
-pyright
-```
-
-(Optional) Auto-format code:
-
-```bash
-ruff format .
-```
-
-> Note: Type checking mode is set to `basic` to avoid excessive noise in educational settings, especially with PyTorch typing stubs.
-
----
-
-## Basic Training Loop (CPU, d_model=128)
-
-The training script uses:
-
-* teacher forcing (shifted target input/output)
-* `CrossEntropyLoss(ignore_index=PAD)`
-* AdamW optimizer
-* gradient clipping
-* runs on **CPU by default** (even if CUDA is available) via `--device cpu`
-
-### 1) Smoke test (1 epoch)
-
-```bash
-python -m src.train --device cpu --task copy --epochs 1 --d_model 128
-```
-
-You should see:
-
-* `[Info] Using device: cpu`
-* `Epoch 01 | train loss ... | val loss ...`
-* the script completes with `Done.`
-
-### 2) Behavior verification (loss should decrease)
+### Option B — Run manually
 
 Copy task:
 
 ```bash
-python -m src.train --device cpu --task copy --epochs 10 --d_model 128
+python -m transformer.train --device cpu --task copy --epochs 10
 ```
 
 Reverse task:
 
 ```bash
-python -m src.train --device cpu --task reverse --epochs 20 --d_model 128
+python -m transformer.train --device cpu --task reverse --epochs 20
 ```
 
-Expected behavior:
+---
 
-* Train/val loss decreases over epochs (shows the model learns)
-* Greedy decoding samples become closer to targets as training progresses
+## Configuration Notes
+
+### Attention mask semantics
+
+All masks are boolean and follow:
+
+* `True`  → **allowed**
+* `False` → **masked out**
+
+In attention, this corresponds to:
+
+```python
+scores = scores.masked_fill(~mask, finfo_min)
+```
+
+### Special tokens (default)
+
+* `PAD = 1`
+* `BOS = 2`
+* `EOS = 3`
 
 ---
 
-## Reproducibility Notes
+## Quality Gates (Teacher Requirements)
 
-* The script sets a manual random seed (`--seed`).
-* CPU execution is enforced via `--device cpu`.
-* Default model size is small (`d_model=128`) to ensure CPU feasibility.
+Run these from repo root:
+
+```bash
+ruff check .
+ruff format .
+pyright
+pytest -q
+```
+
+If everything is correctly refactored, all commands should pass.
 
 ---
 
+## Common Issues & Fixes
+
+### 1) `ModuleNotFoundError: transformer`
+
+You likely didn't install editable mode.
+
+Fix:
+
+```bash
+pip install -e .
+```
+
+### 2) Tests still import `src.*`
+
+Update imports in `tests/` to `transformer.*`.
+Remove any `sys.path` hacks that force `src` imports unless you explicitly want that behavior.
+
+### 3) `pyright` complains about unknown lambda
+
+Avoid `lambda` in `DataLoader(collate_fn=...)`.
+Use `functools.partial(pad_collate_fn, pad_idx=pad_idx)` instead.
+
+---
+
+## What’s Being Tested
+
+* **`test_attention_equivalence.py`**: our `MultiHeadAttention` matches `torch.nn.MultiheadAttention` (no mask case), after weight alignment.
+* **`test_masks.py`**: padding, causal, decoder self-mask, and cross-mask behave correctly.
+* **`test_shapes.py`**: embedding, attention, and Transformer output shapes are correct.
+
+---
+
+## License / Notes
+
+This is a course/assignment-oriented implementation intended for correctness and readability rather than maximum training performance.
+
+```
+::contentReference[oaicite:0]{index=0}
+```
