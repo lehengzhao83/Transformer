@@ -1,4 +1,4 @@
-# Transformer (Toy Seq2Seq) — Strict Pyright + Ruff
+# Transformer
 
 This repository contains a minimal, from-scratch Transformer for toy seq2seq tasks (`copy` / `reverse`), refactored to comply with a **strict** `pyright` configuration and an opinionated `ruff` rule set.
 
