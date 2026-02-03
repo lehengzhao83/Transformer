@@ -6,42 +6,32 @@ from torch import Tensor
 
 def make_pad_mask(q: Tensor, k: Tensor, pad_idx: int = 1) -> Tensor:
     """
-    Create padding mask for attention.
+    q: (B, Tq) token ids
+    k: (B, Tk) token ids
 
-    Args:
-      q: (B, Tq) token ids
-      k: (B, Tk) token ids
-
-    Returns:
-      mask: (B, 1, Tq, Tk) bool tensor
-            True means "allowed", False means "masked".
+    return: (B, 1, Tq, Tk) bool mask
+      True means "allowed", False means "masked".
     """
     if q.dim() != 2 or k.dim() != 2:
-        msg = f"q and k must be rank-2 tensors (B,T). Got q={tuple(q.shape)} k={tuple(k.shape)}"
+        msg = f"q and k must be rank-2 (B,T). Got q={tuple(q.shape)} k={tuple(k.shape)}"
         raise ValueError(msg)
     if q.size(0) != k.size(0):
-        msg = f"Batch size mismatch: q has B={int(q.size(0))}, k has B={int(k.size(0))}"
+        msg = f"Batch mismatch: q B={int(q.size(0))}, k B={int(k.size(0))}"
         raise ValueError(msg)
 
     tq = int(q.size(1))
-    # (B, 1, 1, Tk)
-    k_keep = (k != pad_idx).to(dtype=torch.bool).unsqueeze(1).unsqueeze(2)
-    # (B, 1, Tq, Tk)
-    return k_keep.expand(-1, 1, tq, -1)
+    k_keep = (k != pad_idx).to(dtype=torch.bool).unsqueeze(1).unsqueeze(2)  # (B,1,1,Tk)
+    return k_keep.expand(-1, 1, tq, -1)  # (B,1,Tq,Tk)
 
 
 def make_causal_mask(x: Tensor) -> Tensor:
     """
-    Create causal (lower-triangular) mask.
+    x: (B, T) token ids (only T and device are used)
 
-    Args:
-      x: (B, T) token ids (only length and device are used)
-
-    Returns:
-      mask: (1, 1, T, T) bool tensor, True means "allowed".
+    return: (1, 1, T, T) bool mask (lower triangular), True means "allowed".
     """
     if x.dim() != 2:
-        msg = f"x must be rank-2 tensor (B,T). Got x={tuple(x.shape)}"
+        msg = f"x must be rank-2 (B,T). Got x={tuple(x.shape)}"
         raise ValueError(msg)
 
     t = int(x.size(1))
@@ -54,28 +44,17 @@ def make_causal_mask(x: Tensor) -> Tensor:
 
 def make_decoder_self_mask(tgt: Tensor, pad_idx: int = 1) -> Tensor:
     """
-    Decoder self-attention mask = padding mask & causal mask.
-
-    Args:
-      tgt: (B, T) token ids
-
-    Returns:
-      mask: (B, 1, T, T) bool tensor, True means "allowed".
+    tgt: (B, T)
+    return: (B, 1, T, T) bool mask = pad_mask & causal_mask
     """
-    pad = make_pad_mask(tgt, tgt, pad_idx)  # (B,1,T,T)
-    causal = make_causal_mask(tgt)          # (1,1,T,T)
+    pad = make_pad_mask(tgt, tgt, pad_idx)
+    causal = make_causal_mask(tgt)
     return pad & causal
 
 
 def make_cross_mask(tgt: Tensor, src: Tensor, pad_idx: int = 1) -> Tensor:
     """
-    Cross-attention mask for decoder queries (tgt) attending to encoder keys (src).
-
-    Args:
-      tgt: (B, T) token ids
-      src: (B, S) token ids
-
-    Returns:
-      mask: (B, 1, T, S) bool tensor, True means "allowed".
+    decoder queries (tgt) attend to encoder keys (src)
+    return: (B, 1, T, S) bool mask
     """
     return make_pad_mask(tgt, src, pad_idx)
