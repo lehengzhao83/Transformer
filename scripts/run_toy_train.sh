@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
-set -e
+set -Eeuo pipefail
 
-python -m src.train --task copy --epochs 10
-python -m src.train --task reverse --epochs 20
+# Run from repo root no matter where the script is executed.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${REPO_ROOT}"
+
+# Default to CPU to match assignment requirement.
+# You can override: DEVICE=cuda ./run_toy_train.sh
+DEVICE="${DEVICE:-cpu}"
+
+echo "[Info] Repo root: ${REPO_ROOT}"
+echo "[Info] Using device: ${DEVICE}"
+
+python -m transformer.train --device "${DEVICE}" --task copy --epochs 10
+python -m transformer.train --device "${DEVICE}" --task reverse --epochs 20
