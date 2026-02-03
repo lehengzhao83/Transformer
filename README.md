@@ -163,11 +163,3 @@ Use `functools.partial(pad_collate_fn, pad_idx=pad_idx)` instead.
 * **`test_shapes.py`**: embedding, attention, and Transformer output shapes are correct.
 
 ---
-
-## License / Notes
-
-This is a course/assignment-oriented implementation intended for correctness and readability rather than maximum training performance.
-
-```
-::contentReference[oaicite:0]{index=0}
-```
