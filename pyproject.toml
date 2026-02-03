@@ -16,7 +16,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 # -------------------------
-# provided pyright config 
+# pyright config 
 # -------------------------
 [tool.pyright]
 pythonVersion = "3.12"
@@ -70,7 +70,7 @@ reportUnusedExpression = "warning"
 reportMatchNotExhaustive = "warning"
 
 # -------------------------
-# provided ruff config
+# ruff config
 # -------------------------
 [tool.ruff]
 target-version = "py312"
