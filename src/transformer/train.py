@@ -5,6 +5,7 @@ import math
 from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
+from typing import Any, cast
 
 import torch
 from torch import Tensor, nn
@@ -74,7 +75,12 @@ def train_one_epoch(
     model.train()
 
     amp_enabled = bool(use_amp and device.type == "cuda")
-    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+
+    if amp_enabled:
+        # Use the recommended API for new PyTorch, but bridge type stubs for pyright strict mode.
+        scaler = cast(Any, torch).amp.GradScaler("cuda", enabled=True)
+    else:
+        scaler = cast(Any, torch).amp.GradScaler("cuda", enabled=False)
 
     total_loss = 0.0
     total_tokens = 0
