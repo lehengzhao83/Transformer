@@ -16,6 +16,9 @@ class SpecialTokens:
     EOS: int = 3
 
 
+DEFAULT_SPECIAL_TOKENS: Final[SpecialTokens] = SpecialTokens()
+
+
 class ToySeq2SeqDataset(Dataset[tuple[Tensor, Tensor]]):
     """
     Toy seq2seq dataset for correctness / behavior validation:
@@ -30,7 +33,7 @@ class ToySeq2SeqDataset(Dataset[tuple[Tensor, Tensor]]):
         max_len: int,
         vocab_size: int,
         task: str = "copy",
-        specials: SpecialTokens = SpecialTokens(),
+        specials: SpecialTokens = DEFAULT_SPECIAL_TOKENS,
         seed: int = 42,
     ) -> None:
         super().__init__()
