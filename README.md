@@ -69,7 +69,7 @@ This ensures `python -m transformer.train ...` works everywhere (including `pyte
 ### Option A — Use the provided script
 
 ```bash
-bash run_toy_train.sh
+bash scripts/run_toy_train.sh
 ```
 
 By default this runs on CPU. To run on CUDA (if available):
