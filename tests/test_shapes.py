@@ -20,7 +20,6 @@ def test_embedding_shape() -> None:
 def test_mha_shapes_self_attention() -> None:
     bsz, seq_len, d_model = 2, 5, 32
     n_head = 4
-
     mha = MultiHeadAttention(d_model, n_head, attn_dropout=0.0)
     x: Tensor = torch.randn(bsz, seq_len, d_model)
     y = mha(x, x, x, mask=None)
@@ -30,7 +29,6 @@ def test_mha_shapes_self_attention() -> None:
 def test_mha_shapes_cross_attention() -> None:
     bsz, tq, tk, d_model = 2, 4, 7, 32
     n_head = 4
-
     mha = MultiHeadAttention(d_model, n_head, attn_dropout=0.0)
     q: Tensor = torch.randn(bsz, tq, d_model)
     k: Tensor = torch.randn(bsz, tk, d_model)
@@ -52,7 +50,7 @@ def test_transformer_output_shape() -> None:
         ffn_hidden=64,
         n_head=4,
         n_layer=2,
-        device=device,  # kept for backward compatibility; model doesn't require it now
+        device=device,
         dropout=0.0,
         pad_idx=1,
     )
