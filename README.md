@@ -18,7 +18,6 @@ This repository contains a minimal, from-scratch Transformer for toy seq2seq tas
 
 ```
 
-.
 ├─ pyproject.toml
 ├─ run_toy_train.sh
 ├─ src/
