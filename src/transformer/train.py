@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import argparse
 import math
+from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
-from typing import Iterable
 
 import torch
 from torch import Tensor, nn
@@ -26,33 +26,23 @@ class TrainArgs:
     lr: float
     weight_decay: float
     grad_clip: float | None
-
     train_size: int
     valid_size: int
     min_len: int
     max_len: int
-
     vocab_size: int
     max_len_model: int
-
     d_model: int
     ffn_hidden: int
     n_head: int
     n_layer: int
     dropout: float
-
     no_amp: bool
     seed: int
     save_path: str
 
 
 def resolve_device(device_arg: str) -> torch.device:
-    """
-    device_arg: "cpu" | "cuda" | "auto"
-    - cpu: always CPU
-    - cuda: GPU if available, else CPU (and prints a warning)
-    - auto: GPU if available else CPU
-    """
     arg = device_arg.lower()
     if arg == "cpu":
         return torch.device("cpu")
@@ -61,37 +51,30 @@ def resolve_device(device_arg: str) -> torch.device:
             return torch.device("cuda")
         print("[Warning] --device cuda requested but CUDA is not available. Falling back to CPU.")
         return torch.device("cpu")
-    # auto
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def _autocast_enabled(device: torch.device, use_amp: bool) -> bool:
-    return bool(use_amp and device.type == "cuda")
-
-
 def _autocast_context(device: torch.device, use_amp: bool):
-    enabled = _autocast_enabled(device, use_amp)
-    # Prefer torch.amp.autocast on newer PyTorch; fallback for older versions.
-    if hasattr(torch, "amp") and hasattr(torch.amp, "autocast"):
-        return torch.amp.autocast(device_type="cuda", enabled=enabled)
-    return torch.cuda.amp.autocast(enabled=enabled)
+    if use_amp and device.type == "cuda":
+        return torch.autocast(device_type="cuda")
+    return nullcontext()
 
 
 def train_one_epoch(
     model: Transformer,
-    loader: Iterable[tuple[Tensor, Tensor]],
+    loader: DataLoader[tuple[Tensor, Tensor]],
     optimizer: Optimizer,
     criterion: nn.Module,
     device: torch.device,
     *,
-    pad_idx: int = 1,
-    grad_clip: float | None = 1.0,
-    use_amp: bool = True,
+    pad_idx: int,
+    grad_clip: float | None,
+    use_amp: bool,
 ) -> tuple[float, float]:
     model.train()
 
-    amp_enabled = _autocast_enabled(device, use_amp)
-    scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
+    amp_enabled = bool(use_amp and device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
 
     total_loss = 0.0
     total_tokens = 0
@@ -100,21 +83,13 @@ def train_one_epoch(
         src = src.to(device, non_blocking=True)
         tgt = tgt.to(device, non_blocking=True)
 
-        if tgt.dim() != 2:
-            msg = f"tgt must be rank-2 (B,T); got shape={tuple(tgt.shape)}"
-            raise ValueError(msg)
-
-        # teacher forcing shift
         tgt_in = tgt[:, :-1]
         tgt_out = tgt[:, 1:]
 
         optimizer.zero_grad(set_to_none=True)
 
         with _autocast_context(device, use_amp):
-            logits = model(src, tgt_in)  # (B, T-1, V)
-            if logits.dim() != 3:
-                msg = f"logits must be rank-3 (B,T,V); got shape={tuple(logits.shape)}"
-                raise ValueError(msg)
+            logits = model(src, tgt_in)
             v = int(logits.size(-1))
             loss = criterion(logits.reshape(-1, v), tgt_out.reshape(-1))
 
@@ -127,7 +102,6 @@ def train_one_epoch(
         scaler.step(optimizer)
         scaler.update()
 
-        # token-weighted average loss (ignore PAD tokens)
         non_pad = int((tgt_out != pad_idx).sum().item())
         total_loss += float(loss.detach().cpu().item()) * non_pad
         total_tokens += non_pad
@@ -140,14 +114,7 @@ def train_one_epoch(
 def _parse_args() -> TrainArgs:
     p = argparse.ArgumentParser()
 
-    # Device control: default to CPU for course requirement
-    p.add_argument(
-        "--device",
-        choices=["cpu", "cuda", "auto"],
-        default="cpu",
-        help="Choose device. Default is CPU (recommended for assignment).",
-    )
-
+    p.add_argument("--device", choices=["cpu", "cuda", "auto"], default="cpu")
     p.add_argument("--task", choices=["copy", "reverse"], default="copy")
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--batch_size", type=int, default=64)
@@ -160,17 +127,16 @@ def _parse_args() -> TrainArgs:
     p.add_argument("--min_len", type=int, default=5)
     p.add_argument("--max_len", type=int, default=20)
 
-    p.add_argument("--vocab_size", type=int, default=200)  # includes special tokens
+    p.add_argument("--vocab_size", type=int, default=200)
     p.add_argument("--max_len_model", type=int, default=256)
 
-    # Default d_model=128 (meets teacher requirement)
     p.add_argument("--d_model", type=int, default=128)
     p.add_argument("--ffn_hidden", type=int, default=512)
     p.add_argument("--n_head", type=int, default=4)
     p.add_argument("--n_layer", type=int, default=2)
     p.add_argument("--dropout", type=float, default=0.1)
 
-    p.add_argument("--no_amp", action="store_true", help="Disable AMP. AMP is disabled on CPU anyway.")
+    p.add_argument("--no_amp", action="store_true")
     p.add_argument("--seed", type=int, default=123)
     p.add_argument("--save_path", type=str, default="transformer_best.pt")
 
@@ -178,7 +144,6 @@ def _parse_args() -> TrainArgs:
 
     grad_clip: float | None = float(ns.grad_clip)
     if grad_clip <= 0.0:
-        # allow user to disable by passing <=0
         grad_clip = None
 
     return TrainArgs(
@@ -209,11 +174,8 @@ def _parse_args() -> TrainArgs:
 def main() -> int:
     args = _parse_args()
 
-    # basic argument sanity check
     if args.d_model % args.n_head != 0:
         raise ValueError(f"d_model ({args.d_model}) must be divisible by n_head ({args.n_head}).")
-    if args.vocab_size <= 0:
-        raise ValueError("vocab_size must be positive")
 
     torch.manual_seed(args.seed)
 
@@ -222,7 +184,7 @@ def main() -> int:
 
     print(f"[Info] Using device: {device.type}")
     if device.type == "cpu":
-        print("[Info] Running on CPU as required. (AMP disabled on CPU)")
+        print("[Info] Running on CPU. (AMP disabled on CPU)")
 
     specials = SpecialTokens(PAD=1, BOS=2, EOS=3)
     pad_idx = specials.PAD
@@ -246,7 +208,6 @@ def main() -> int:
         seed=args.seed + 1,
     )
 
-    # Avoid lambda for strict typing / ruff reportUnknownLambdaType
     collate = partial(pad_collate_fn, pad_idx=pad_idx)
 
     train_loader: DataLoader[tuple[Tensor, Tensor]] = DataLoader(
@@ -274,7 +235,7 @@ def main() -> int:
         ffn_hidden=args.ffn_hidden,
         n_head=args.n_head,
         n_layer=args.n_layer,
-        device=device,  # kept for backward compatibility; model itself does not rely on it now
+        device=device,
         dropout=args.dropout,
         pad_idx=pad_idx,
     ).to(device)
@@ -315,7 +276,6 @@ def main() -> int:
             torch.save(model.state_dict(), args.save_path)
             print(f"  saved: {args.save_path}")
 
-        # small qualitative check: greedy decode one batch (optional)
         if epoch == 1 or epoch == args.epochs:
             src, tgt = next(iter(valid_loader))
             src = src[:2].to(device)
